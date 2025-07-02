@@ -281,32 +281,71 @@ impl TransactionInput {
     }
 }
 
-// #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-// pub struct BitcoinTransaction {
-//     pub version: u32,
-//     pub inputs: Vec<TransactionInput>,
-//     pub lock_time: u32,
-// }
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct BitcoinTransaction {
+    pub version: u32,
+    pub inputs: Vec<TransactionInput>,
+    pub lock_time: u32,
+}
 
-// impl BitcoinTransaction {
-//     pub fn new(version: u32, inputs: Vec<TransactionInput>, lock_time: u32) -> Self {
-//         // TODO: Construct a transaction from parts
-//     }
+impl BitcoinTransaction {
+    pub fn new(version: u32, inputs: Vec<TransactionInput>, lock_time: u32) -> Self {
+        BitcoinTransaction {
+            version,
+            inputs,
+            lock_time,
+        }
+    }
 
-//     pub fn to_bytes(&self) -> Vec<u8> {
-//         // TODO: Format:
-//         // - version (4 bytes LE)
-//         // - CompactSize (number of inputs)
-//         // - each input serialized
-//         // - lock_time (4 bytes LE)
-//     }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        // TODO: Format:
+        let mut result = Vec::new();
 
-//     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
-//         // TODO: Read version, CompactSize for input count
-//         // Parse inputs one by one
-//         // Read final 4 bytes for lock_time
-//     }
-// }
+        // Version (4 bytes LE)
+        result.extend(&self.version.to_le_bytes());
+
+        // CompactSize for number of inputs
+        result.extend(encode_compact_size(self.inputs.len() as u64));
+
+        // Inputs
+        for input in &self.inputs {
+            result.extend(input.to_bytes());
+        }
+
+        // Lock time (4 bytes LE)
+        result.extend(&self.lock_time.to_le_bytes());
+
+        result
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        if bytes.len() < 4 {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+
+        let version = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+
+        // Read CompactSize for input count
+        let (input_count, mut offset) = decode_compact_size(&bytes[4..])?;
+        offset += 4; // because CompactSize was after the 4-byte version
+
+        let mut inputs = Vec::new();
+        for _ in 0..input_count {
+            let (input, consumed) = TransactionInput::from_bytes(&bytes[offset..])?;
+            inputs.push(input);
+            offset += consumed;
+        }
+
+        if bytes.len() < offset + 4 {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+
+        let lock_time = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        offset += 4;
+
+        Ok((BitcoinTransaction::new(version, inputs, lock_time), offset))
+    }
+}
 
 // impl fmt::Display for BitcoinTransaction {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
