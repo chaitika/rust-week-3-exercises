@@ -235,29 +235,51 @@ impl Deref for Script {
     }
 }
 
-// #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-// pub struct TransactionInput {
-//     pub previous_output: OutPoint,
-//     pub script_sig: Script,
-//     pub sequence: u32,
-// }
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct TransactionInput {
+    pub previous_output: OutPoint,
+    pub script_sig: Script,
+    pub sequence: u32,
+}
 
-// impl TransactionInput {
-//     pub fn new(previous_output: OutPoint, script_sig: Script, sequence: u32) -> Self {
-//         // TODO: Basic constructor
-//     }
+impl TransactionInput {
+    pub fn new(previous_output: OutPoint, script_sig: Script, sequence: u32) -> Self {
+        TransactionInput {
+            previous_output,
+            script_sig,
+            sequence,
+        }
+    }
 
-//     pub fn to_bytes(&self) -> Vec<u8> {
-//         // TODO: Serialize: OutPoint + Script (with CompactSize) + sequence (4 bytes LE)
-//     }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        // TODO: Serialize: OutPoint + Script (with CompactSize) + sequence (4 bytes LE)
+        let mut result = Vec::new();
+        result.extend(self.previous_output.to_bytes()); // 36 bytes
+        result.extend(self.script_sig.to_bytes()); // CompactSize + script bytes
+        result.extend(&self.sequence.to_le_bytes()); // 4 bytes, little-endian
+        result
+    }
 
-//     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
-//         // TODO: Deserialize in order:
-//         // - OutPoint (36 bytes)
-//         // - Script (with CompactSize)
-//         // - Sequence (4 bytes)
-//     }
-// }
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        // TODO: Deserialize in order:
+        // - OutPoint (36 bytes)
+        // - Script (with CompactSize)
+        // - Sequence (4 bytes)
+        let (outpoint, outpoint_len) = OutPoint::from_bytes(bytes)?;
+        let (script_sig, script_len) = Script::from_bytes(&bytes[outpoint_len..])?;
+
+        let seq_start = outpoint_len + script_len;
+        if bytes.len() < seq_start + 4 {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+        let sequence = u32::from_le_bytes(bytes[seq_start..seq_start + 4].try_into().unwrap());
+
+        Ok((
+            TransactionInput::new(outpoint, script_sig, sequence),
+            seq_start + 4,
+        ))
+    }
+}
 
 // #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 // pub struct BitcoinTransaction {
