@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 // use std::fmt;
-// use std::ops::Deref;
+use std::ops::Deref;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct CompactSize {
@@ -141,32 +141,99 @@ impl OutPoint {
     }
 }
 
-// #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-// pub struct Script {
-//     pub bytes: Vec<u8>,
-// }
+fn decode_compact_size(bytes: &[u8]) -> Result<(u64, usize), BitcoinError> {
+    if bytes.is_empty() {
+        return Err(BitcoinError::InsufficientBytes);
+    }
+    match bytes[0] {
+        n @ 0x00..=0xFC => Ok((n as u64, 1)),
+        0xFD => {
+            if bytes.len() < 3 {
+                Err(BitcoinError::InsufficientBytes)
+            } else {
+                let val = u16::from_le_bytes(bytes[1..3].try_into().unwrap()) as u64;
+                Ok((val, 3))
+            }
+        }
+        0xFE => {
+            if bytes.len() < 5 {
+                Err(BitcoinError::InsufficientBytes)
+            } else {
+                let val = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as u64;
+                Ok((val, 5))
+            }
+        }
+        0xFF => {
+            if bytes.len() < 9 {
+                Err(BitcoinError::InsufficientBytes)
+            } else {
+                let val = u64::from_le_bytes(bytes[1..9].try_into().unwrap());
+                Ok((val, 9))
+            }
+        }
+    }
+}
 
-// impl Script {
-//     pub fn new(bytes: Vec<u8>) -> Self {
-//         // TODO: Simple constructor
-//     }
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct Script {
+    pub bytes: Vec<u8>,
+}
 
-//     pub fn to_bytes(&self) -> Vec<u8> {
-//         // TODO: Prefix with CompactSize (length), then raw bytes
-//     }
+fn encode_compact_size(n: u64) -> Vec<u8> {
+    match n {
+        0..=0xFC => vec![n as u8],
+        0xFD..=0xFFFF => {
+            let mut v = vec![0xFD];
+            v.extend(&(n as u16).to_le_bytes());
+            v
+        }
+        0x10000..=0xFFFF_FFFF => {
+            let mut v = vec![0xFE];
+            v.extend(&(n as u32).to_le_bytes());
+            v
+        }
+        _ => {
+            let mut v = vec![0xFF];
+            v.extend(&n.to_le_bytes());
+            v
+        }
+    }
+}
 
-//     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
-//         // TODO: Parse CompactSize prefix, then read that many bytes
-//         // Return error if not enough bytes
-//     }
-// }
+impl Script {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        // TODO: Simple constructor
+        Script { bytes }
+    }
 
-// impl Deref for Script {
-//     type Target = Vec<u8>;
-//     fn deref(&self) -> &Self::Target {
-//         // TODO: Allow &Script to be used as &[u8]
-//     }
-// }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        // TODO: Prefix with CompactSize (length), then raw bytes
+        let mut result = Vec::new();
+        result.extend(encode_compact_size(self.bytes.len() as u64));
+        result.extend(&self.bytes);
+        result
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), BitcoinError> {
+        // TODO: Parse CompactSize prefix, then read that many bytes
+        // Return error if not enough bytes
+        let (len, prefix_len) = decode_compact_size(bytes)?;
+        let total_len = prefix_len + len as usize;
+        if bytes.len() < total_len {
+            return Err(BitcoinError::InsufficientBytes);
+        }
+        let script_bytes = bytes[prefix_len..total_len].to_vec();
+        Ok((Script::new(script_bytes), total_len))
+    }
+}
+
+impl Deref for Script {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Self::Target {
+        // TODO: Allow &Script to be used as &[u8]
+        &self.bytes
+    }
+}
 
 // #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 // pub struct TransactionInput {
