@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-// use std::fmt;
+use std::fmt;
 use std::ops::Deref;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -347,9 +347,27 @@ impl BitcoinTransaction {
     }
 }
 
-// impl fmt::Display for BitcoinTransaction {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         // TODO: Format a user-friendly string showing version, inputs, lock_time
-//         // Display scriptSig length and bytes, and previous output info
-//     }
-// }
+impl fmt::Display for BitcoinTransaction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO: Format a user-friendly string showing version, inputs, lock_time
+        // Display scriptSig length and bytes, and previous output info
+        writeln!(f, "Version: {}", self.version)?;
+        for (i, input) in self.inputs.iter().enumerate() {
+            writeln!(f, "Input #{}", i)?;
+            writeln!(
+                f,
+                "  Previous Output TXID: {}",
+                hex::encode(input.previous_output.txid.0)
+            )?;
+            writeln!(f, "  Previous Output Vout: {}", input.previous_output.vout)?;
+            writeln!(
+                f,
+                "  ScriptSig ({} bytes): {}",
+                input.script_sig.bytes.len(),
+                hex::encode(&input.script_sig.bytes)
+            )?;
+            writeln!(f, "  Sequence: {}", input.sequence)?;
+        }
+        writeln!(f, "Lock Time: {}", self.lock_time)
+    }
+}
